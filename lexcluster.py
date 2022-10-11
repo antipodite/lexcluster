@@ -327,6 +327,7 @@ import hdbscan
 
 import geopandas
 import matplotlib.pyplot as plot
+import matplotlib.patches as patches
 
 def build_microgroup_matrix(rows):
     """Transform the result of find_suspicious_sets into a presence/absence
@@ -351,7 +352,12 @@ def build_language_matrix(glottocache, rows):
         if code:
             lg = gc.get(code)
             lg_sets = set([row["ProtoForm"] for row in rows])
-            matrix_row = {"name": lg.name}
+            matrix_row = {
+                "name": lg.name,
+                "glottocode": lg.glottocode,
+                "x": lg.longitude,
+                "y": lg.latitude
+            }
             for set_ in all_sets:
                 state = 1 if set_ in lg_sets else 0
                 matrix_row[set_] = state
@@ -359,22 +365,44 @@ def build_language_matrix(glottocache, rows):
     return pandas.DataFrame(matrix)
 
 
-def make_clusters(featmatrix):
+def make_clusters(featmatrix, metric, min_size=2):
     frame = pandas.DataFrame(featmatrix)
-    distance_matrix = gower.gower_matrix(frame)
-    clusterer = hdbscan.HDBSCAN(metric="precomputed")
-    # .astype(numpy.float64): github.com/scikit-learn-contrib/hdbscan/issues/71
-    clusterer.fit(distance_matrix.astype(numpy.float64))
-    return clusterer, distance_matrix, frame
+    if metric == "gower":
+        distance_matrix = gower.gower_matrix(frame)
+        clusterer = hdbscan.HDBSCAN(metric="precomputed")
+        # .astype(numpy.float64): github.com/scikit-learn-contrib/hdbscan/issues/71
+        clusterer.fit(distance_matrix.astype(numpy.float64))
+    else:
+        clusterer= hdbscan.HDBSCAN(metric=metric, min_cluster_size=min_size)
+        clusterer.fit(featmatrix)
+    # Add computed clusters to feature matrix
+    return clusterer, frame
 
 
-def make_map():
+def make_map(matrix):
+    """Plot clusters from matrix with clusters added"""
+    # Draw map of the Philippines
     phmap = geopandas.read_file(
         "/Users/isaac_stead/Projects/lexcluster/data/philippines-outline.json"
     )
     fig, axis = plot.subplots(figsize=(12, 6))
     phmap.plot(color="lightgrey", ax=axis)
+    # Plot the languages, colour coded by cluster
+    xs = matrix["x"]
+    ys = matrix["y"]
+    clusters = matrix["cluster"]
+    n_clusters = len(set(clusters))
+    names = matrix["name"]
+    colours = plot.cm.rainbow(np.linspace(0, 1, n_clusters))
+    for x, y, clust, name in zip(xs, ys, clusters, names):
+        axis.scatter(x, y, color=colours[clust])
+        axis.annotate(name, (x, y), size=4)
+    # Create the legend
+    handles = [patches.Patch(color=colours[clust], label=clust if clust>=0 else "outliers")
+               for clust in set(clusters)]
+    axis.legend(handles=handles)
     plot.show()
+            
 
 # First run, with HDBSCAN fit against Gower distance matrix: 39 clusters, 394 outliers
 # Hypothesis: outliers will be cognate sets which appear in most microgroups, i.e. cognate
