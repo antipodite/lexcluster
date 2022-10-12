@@ -364,6 +364,20 @@ def build_language_matrix(glottocache, rows):
             matrix.append(matrix_row)
     return pandas.DataFrame(matrix)
 
+## Some convenience functions for counting cognate set reflexes per language and per set
+## Use these to experiment with how filtering sets / languages with low state counts
+## the clustering
+
+def get_n_row_feats(matrix, col_regex):
+    """How many features are present for each row in a binary matrix?"""
+    row_sums = [(n, c) for n, c in zip(matrix.iloc[:,0], matrix.filter(regex=col_regex).sum(axis=1))]
+67    return pandas.DataFrame(row_sums)
+
+
+def get_feat_counts(matrix, col_regex):
+    """How many times is each individual feature represented in the data?"""
+    return matrix.filter(regex=col_regex).sum(axis=0).sort_values(ascending=False)
+
 
 def make_clusters(featmatrix, metric, min_size=2):
     frame = pandas.DataFrame(featmatrix)
@@ -379,6 +393,12 @@ def make_clusters(featmatrix, metric, min_size=2):
     return clusterer, frame
 
 
+def display_clusters(matrix):
+    """Convenient readout so I can see what languages/sets are in what cluster"""
+    name_clust = lm[["name", "cluster"]]
+    return name_clust.groupby("cluster")["name"].apply(list)
+
+
 def make_map(matrix):
     """Plot clusters from matrix with clusters added"""
     # Draw map of the Philippines
@@ -387,13 +407,15 @@ def make_map(matrix):
     )
     fig, axis = plot.subplots(figsize=(12, 6))
     phmap.plot(color="lightgrey", ax=axis)
-    # Plot the languages, colour coded by cluster
+    # Get relevant data out of matrix
     xs = matrix["x"]
     ys = matrix["y"]
     clusters = matrix["cluster"]
     n_clusters = len(set(clusters))
     names = matrix["name"]
+    # Assign colours to cluster indices
     colours = plot.cm.rainbow(np.linspace(0, 1, n_clusters))
+    # Plot and label each language point coloured by cluster index
     for x, y, clust, name in zip(xs, ys, clusters, names):
         axis.scatter(x, y, color=colours[clust])
         axis.annotate(name, (x, y), size=4)
